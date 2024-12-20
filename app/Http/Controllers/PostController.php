@@ -19,77 +19,71 @@ use Illuminate\Http\Request;
 class PostController extends Controller
 {
     // Fetching paginated posts with likes count and tags
-    public function list(Request $request)
+    public function list()
     {
-        $posts = Post::withCount('likes')  
-                     ->with('tags')         
-                     ->latest()              
-                     ->paginate(10);        
-
-        // Return paginated posts using the PostResource collection
-        return PostResource::collection($posts);
+        $posts = Post::with(['user', 'likes', 'tags'])
+                     ->withCount('likes')
+                     ->paginate(10);
+    
+        return new PostCollection($posts);
     }
-
+    
     // Handle toggling the post reaction (like/unlik
     public function toggleReaction(PostToggleReactionRequest $request)
     {
         try {
-            // Retrieve the post with the likes relationship for the current user
-            $post = Post::with(['likes' => function ($query) {
-                $query->where('user_id', Auth::id());  // Only get the likes for the authenticated user
-            }])->findOrFail($request->post_id);  // Find the post by ID
-
-            // Check if the user is trying to like their own post
-            if ($post->author_id === Auth::id()) {
-                throw new UserLikeOwnPostException("You cannot like your own post.");
+            $post = Post::findOrFail($request->validated('post_id'));
+            $user = Auth::user();
+    
+            if ($post->user_id === $user->id) {
+                throw new UserLikeOwnPostException('You cannot like your own post.');
             }
-
-            // Check if the user has already liked the post
-            $userLike = $post->likes->first(); // Check if the user has already liked the post
-
-            if ($request->like) {
-                // If the user hasn't liked the post, add a like
-                if (!$userLike) {
-                    $post->likes()->create([
-                        'user_id' => Auth::id(),
-                    ]);
-                    return response()->json([
-                        'status'  => Response::HTTP_OK,
-                        'message' => 'You liked this post successfully.',
-                    ]);
+    
+            $existingLike = $post->likes()->where('user_id', $user->id)->first();
+    
+            if ($request->boolean('like')) {
+                if ($existingLike) {
+                    throw new UserAlreadyLikedPostException('You have already liked this post.');
                 }
-
+    
+                $post->likes()->create(['user_id' => $user->id]);
+    
                 return response()->json([
-                    'status'  => Response::HTTP_CONFLICT,
-                    'message' => 'You have already liked this post.',
-                ], Response::HTTP_CONFLICT);
+                    'status'  => Response::HTTP_OK,
+                    'message' => 'You liked this post successfully.',
+                ], Response::HTTP_OK);
             }
-
-            // If the user is unliking the post and has already liked it
-            if ($userLike) {
-                $userLike->delete(); // Remove like
+    
+            if ($existingLike) {
+                $existingLike->delete();
+    
                 return response()->json([
                     'status'  => Response::HTTP_OK,
                     'message' => 'You unliked this post successfully.',
-                ]);
+                ], Response::HTTP_OK);
             }
-
-            // If the user tries to unlike without having liked the post
+    
+            return response()->json([
+                'status'  => Response::HTTP_BAD_REQUEST,
+                'message' => 'You have not liked this post yet.',
+            ], Response::HTTP_BAD_REQUEST);
+    
+        } catch (UserLikeOwnPostException | UserAlreadyLikedPostException $e) {
+            return response()->json([
+                'status'  => Response::HTTP_BAD_REQUEST,
+                'message' => $e->getMessage(),
+            ], Response::HTTP_BAD_REQUEST);
+        } catch (ModelNotFoundException $e) {
             return response()->json([
                 'status'  => Response::HTTP_NOT_FOUND,
-                'message' => 'You have not liked this post.',
+                'message' => 'Post not found.',
             ], Response::HTTP_NOT_FOUND);
-
-        } catch (UserLikeOwnPostException $e) {
-            return response()->json([
-                'status'  => Response::HTTP_FORBIDDEN,
-                'message' => $e->getMessage(),
-            ], Response::HTTP_FORBIDDEN);
         } catch (\Throwable $e) {
             return response()->json([
                 'status'  => Response::HTTP_INTERNAL_SERVER_ERROR,
-                'message' => $e->getMessage(),
+                'message' => 'Internal server error.',
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
+    
 }

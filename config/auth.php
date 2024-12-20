@@ -36,8 +36,8 @@ return [
     */
 
     'guards' => [
-        'web' => [
-            'driver' => 'session',
+        'ctj-api' => [
+            'driver' => 'sanctum',
             'provider' => 'users',
         ],
     ],

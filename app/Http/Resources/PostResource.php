@@ -6,21 +6,22 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class PostResource extends JsonResource
 {
-    /**
-     * Transform the resource into an array.
-     *
-     * @param \Illuminate\Http\Request $request
-     * @return array|\Illuminate\Contracts\Support\Arrayable|\JsonSerializable
-     */
+   
     public function toArray($request)
     {
         return [
-            'id'          => $this->resource->id,
-            'title'       => $this->resource->title,
-            'description' => $this->resource->description,
-            'tags'        => TagResource::collection($this->whenLoaded('tags')),
-            'like_counts' => $this->when(isset($this->resource->likes_count), $this->resource->likes_count),
-            'created_at'  => $this->resource->created_at,
+            'id'        => $this->id,
+            'title'     => $this->title,
+            'content'   => $this->content,
+            'author'    => [
+                'id'   => $this->user->id,
+                'name' => $this->user->name,
+                'email' => $this->user->email,
+            ],
+            'likes_count' => $this->likes_count,
+            'tags'      => $this->tags->pluck('name'),
+            'created_at' => $this->created_at->toDateTimeString(),
+            'updated_at' => $this->updated_at->toDateTimeString(),
         ];
     }
 }
